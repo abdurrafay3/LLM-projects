@@ -72,12 +72,42 @@ image_function = {
     "additionalProperties": False,
 }
 
+ticket_function = {
+    "name": "get_ticket_price",
+    "description": "Call this function whenever the user wants to know the price of a ticket to a city",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "destination_city": {
+                "type": "string",
+                "description": "The city for which the user wants the ticket to",
+            },
+        },
+        "required": ["destination_city"],
+        "additionalProperties": False,
+    },
+}
+
+
+def get_ticket_price(city):  # *city here contains the string for destination city
+    ticket_price_list = {
+        "Tokyo": "$499",
+        "Hong Kong": "$1000",
+        "New York City": "$900",
+        "London": "$1200",
+    }
+    print("get_ticket_price was called")
+    ticket_price = ticket_price_list.get(city)
+    return ticket_price
+
 
 # TODO create the function for getting the image
 def get_image(prompt):
     print(f"🎨 get_image function ran with prompt: '{prompt}'")
-    
-    
+    ##NOTE:
+    #* My API key doesnt have access to images so I just return a placeholder image to check whether the tool is working correctly
+
+
     # image_response = openai.images.generate(
     #     model="dall-e-3",
     #     prompt=prompt,
@@ -88,20 +118,28 @@ def get_image(prompt):
     # image_base64 = image_response.data[0].b64_json
     # image_data = base64.b64decode(image_base64)
     # return Image.open(BytesIO(image_data))
-    
-    # For testing: create a placeholder image
-    img = Image.new('RGB', (400, 400), color='lightgreen')
+
+    #^ Creating a placeholder image
+    img = Image.new("RGB", (400, 400), color="lightgreen")
     return img
+
 
 def handle_tool_call(tool_call):
     print("get_handle_tool was called ")
     arguments = json.loads(tool_call.function.arguments)
     if tool_call.function.name == "get_image":
         return get_image(arguments["prompt"])
+    elif tool_call.function.name == "get_ticket_price":
+        return get_ticket_price(arguments["destination_city"])
+        # *We need to return the ticket price and the response
+
     return "Unknown tool"
 
 
-tools = [{"type": "function", "function": image_function}]
+tools = [
+    {"type": "function", "function": image_function},
+    {"type": "function", "function": ticket_function},
+]
 
 
 def chat(history):
@@ -123,11 +161,21 @@ def chat(history):
                         "content": "Image was generated successfully",
                     }
                 )
-        #*AI needs to respond that it generated the image
+            elif call.function.name == "get_ticket_price":
+                ticket_price = handle_tool_call(call)
+                # *Now we need to append this to messages
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": f"The ticket price is {ticket_price}",
+                    }
+                )
+        # *AI needs to respond according to the tool it used by reading messages again
         response = openai.chat.completions.create(
             model="gpt-4o-mini", messages=messages, tools=tools
         )
-    #*If no tools required, reply normally
+    # *If no tools required, reply normally
     reply = response.choices[0].message.content
     history += [{"role": "assistant", "content": reply}]
 
