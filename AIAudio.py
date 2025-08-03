@@ -31,7 +31,7 @@ pipeline = pipeline(
     torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
     device=0 if torch.cuda.is_available() else "cpu",
     max_new_tokens=400,
-    return_timestamps=False,
+    return_timestamps=True,
 )
 
 
@@ -66,11 +66,23 @@ with gr.Blocks() as ui:
     with gr.Row():
         audio_file = gr.Audio(label="Upload Audio", type="filepath")
        
-    def audio_transcription(audio_file_path):
-        audio_transcription = pipeline(audio_file_path)
+    # ^ This will get both the audio from the microphone and the audio file that is uploaded
+    def audio_transcription(audio_from_mic, audio_file_upload):
+        # ^ We need to process both the q         
+        # 
+        # file upload the the recording 
+        messages = []
+        # & we need to process the recording from the microphone first since its the instruction from the user of what it wants gpt to do with the uploaded audio
+        audio_transcription = pipeline(audio_from_mic)
         text_from_audio = audio_transcription["text"]
-        response = [{"role":"user", "content": text_from_audio}]
-        return response
+        # ^ check if the user uploaded a file
+        messages.append({"role":"user", "content": text_from_audio})
+        if (audio_file_upload):
+            result_upload = pipeline(audio_file_upload)
+            text_from_file = result_upload["text"]
+            messages.append({"role":"user", "content": text_from_file})
+            
+        return messages
     
     def clear_input(message, history):
         history += [{"role": "user", "content": message}]
@@ -82,7 +94,7 @@ with gr.Blocks() as ui:
 
     submit_btn.click(
         audio_transcription,
-        inputs=audio_input,
+        inputs=[audio_input, audio_file],
         outputs=chatbot
     ).then(
         chat,
@@ -90,6 +102,7 @@ with gr.Blocks() as ui:
         outputs=chatbot
     )
 
+# ^ We can also add another button for uploading audio files
 
 # & this function gets the input from the gradio textbox, appends it to history then output the history to chatbot
 # & then from chatbot it input that history into the chat function which responds with the reply and the reply is output into the chatbot which enables openAI to behave like it has memory
@@ -100,6 +113,3 @@ ui.launch(inbrowser=True)
 
 
 # ^ Test with a URL first (this should work)
-result = pipeline("denver_extract.mp3")
-print("Result is ready")
-print(result)
