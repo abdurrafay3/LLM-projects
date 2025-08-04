@@ -5,6 +5,10 @@ import os
 from openai import OpenAI, AuthenticationError
 import gradio as gr
 
+"""
+This program is for 
+"""
+
 load_dotenv(override=True)
 get_api_key = os.getenv("OPENAI_API_KEY")
 
@@ -27,11 +31,9 @@ except Exception as e:
 
 pipeline = pipeline(
     task="automatic-speech-recognition",
-    model="openai/whisper-medium",
+    model="distil-whisper/distil-large-v3",
     torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
     device=0 if torch.cuda.is_available() else "cpu",
-    max_new_tokens=400,
-    return_timestamps=True,
 )
 
 
@@ -62,44 +64,65 @@ with gr.Blocks() as ui:
         input = gr.Textbox(label="Chat with our AI Assistant")
     with gr.Row():
         audio_input = gr.Microphone(label="Speak to our AI assistant", type="filepath")
-        submit_btn = gr.Button("Submit audio to get the response")
+        submit_btn = gr.Button("Submit audio + text")
     with gr.Row():
         audio_file = gr.Audio(label="Upload Audio", type="filepath")
-       
+
     # ^ This will get both the audio from the microphone and the audio file that is uploaded
-    def audio_transcription(audio_from_mic, audio_file_upload):
-        # ^ We need to process both the q         
-        # 
-        # file upload the the recording 
-        messages = []
-        # & we need to process the recording from the microphone first since its the instruction from the user of what it wants gpt to do with the uploaded audio
-        audio_transcription = pipeline(audio_from_mic)
-        text_from_audio = audio_transcription["text"]
-        # ^ check if the user uploaded a file
-        messages.append({"role":"user", "content": text_from_audio})
-        if (audio_file_upload):
-            result_upload = pipeline(audio_file_upload)
-            text_from_file = result_upload["text"]
-            messages.append({"role":"user", "content": text_from_file})
-            
+    def audio_transcription(audio_from_mic, audio_from_file, text_input, history):
+        # ^ We need to process both the audio from the file and the microphone recording
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant"}
+        ] + history
+        if text_input:
+            messages.append({"role": "user", "content": text_input})
+        if audio_from_mic is not None:
+            audio_from_mic_result = pipeline(
+                audio_from_mic,
+                generate_kwargs={"max_new_tokens": 100, "language": "english"},
+            )
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"Voice Instructions: {audio_from_mic_result['text']}",
+                }
+            )
+        if audio_from_file is not None:
+            audio_from_file_result = pipeline(
+                audio_from_file,
+                chunk_length_s=30,
+                batch_size=8,
+                generate_kwargs={"max_new_tokens": 300, "language": "english"},
+            )
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"The audio file transcription is: {audio_from_file_result['text']}",
+                }
+            )
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini", messages=messages
+        )
+        reply = response.choices[0].message.content
+        messages.append({"role":"assistant", "content":reply})
         return messages
-    
+
     def clear_input(message, history):
         history += [{"role": "user", "content": message}]
         return "", history
 
-    input.submit(clear_input, inputs=[input, chatbot], outputs=[input, chatbot]).then(
-        chat, inputs=[chatbot], outputs=[chatbot]
-    )
+    input.submit(audio_transcription,
+    inputs=[audio_input, audio_file, input, chatbot],
+    outputs=chatbot
+).then(
+    lambda: "",  # Clear text input
+    outputs=input
+)
 
     submit_btn.click(
         audio_transcription,
-        inputs=[audio_input, audio_file],
-        outputs=chatbot
-    ).then(
-        chat,
-        inputs=chatbot,
-        outputs=chatbot
+        inputs=[audio_input, audio_file, input, chatbot],
+        outputs=chatbot,
     )
 
 # ^ We can also add another button for uploading audio files
@@ -107,7 +130,7 @@ with gr.Blocks() as ui:
 # & this function gets the input from the gradio textbox, appends it to history then output the history to chatbot
 # & then from chatbot it input that history into the chat function which responds with the reply and the reply is output into the chatbot which enables openAI to behave like it has memory
 # ^ It also clears the input ⬇️
-# TODO add another gradio row where the user can insert an audio file
+#  TODO add another gradio row where the user can insert an audio file 
 
 ui.launch(inbrowser=True)
 
