@@ -62,25 +62,24 @@ def test_data_generator(type_of_data) -> list:
         content = response.choices[0].message.content.strip()
         # ^ Since add will be a json type dictionary
         try:            
-            # Fix: Ensure content is a string and handle None
             if content is None:
                 print(f"⚠️ None response for iteration {i}")
                 continue
-                
-            content = str(content).strip()  # Convert to string and strip
+                # ^ Convert to string and strip
+            content = str(content).strip()  
             
-            # Now safe to call .lower()
+            # ^ Now safe to call .lower()
             if not content or content.lower() == 'null':
                 print(f"⚠️ Empty or null response for iteration {i}")
                 continue
             
-            # Try to extract JSON if wrapped in code blocks
+            # ^ Try to extract JSON if wrapped in code blocks
             if '```json' in content:
                 content = content.split('```json')[1].split('```')[0].strip()
             elif '```' in content:
                 content = content.split('```')[1].split('```')[0].strip()
             
-            # Parse JSON
+            # ^ Parse JSON
             parsed_data = json.loads(content)
             test_data.append(parsed_data)
             print("✅ Appending to test data successful")
